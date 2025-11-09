@@ -91,12 +91,12 @@ jobs:
           # Run in explicit order to avoid dependency issues
           for file in 01_create_tables.sql 02_seed_data.sql 03_transform.sql 04_data_quality_checks.sql; do
             if [ -f "${SQL_DIR}/${file}" ]; then
-              echo "🚀 Running ${SQL_DIR}/${file}"
+              echo "Running ${SQL_DIR}/${file}"
               snowsql -a "$SNOWSQL_ACCOUNT" -u "$SNOWSQL_USER" -p "$SNOWSQL_PWD" \
                 -w "$SNOWFLAKE_WAREHOUSE" -d "$SNOWFLAKE_DATABASE" -s "$SNOWFLAKE_SCHEMA" \
                 -f "${SQL_DIR}/${file}" -o output_format=plain -o friendly=false
             else
-              echo "ℹ️ Skipping ${file} (not found)"
+              echo "Skipping ${file} (not found)"
             fi
           done
 

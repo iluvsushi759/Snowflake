@@ -1,0 +1,11 @@
+# .github/workflows/test.yml
+name: Test Workflow
+
+on:
+  workflow_dispatch:
+
+jobs:
+  hello:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "✅ Workflow detected!"

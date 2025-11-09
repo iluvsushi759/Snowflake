@@ -1,0 +1,121 @@
+#github/workflow/snowflake-ci-cd.yml
+name: Snowflake CI/CD
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+env:
+  SQL_DIR: sql
+
+jobs:
+  validate:
+    name: Lint SQL and verify Snowflake connection
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install sqlfluff sqlfluff-templater-jinja snowflake-connector-python
+
+      - name: Lint SQL files (Snowflake dialect)
+        run: |
+          sqlfluff --version
+          sqlfluff lint "${SQL_DIR}/" --dialect snowflake
+
+      - name: Test Snowflake connection
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+        run: |
+          python - <<'PY'
+          import os, snowflake.connector
+          conn = snowflake.connector.connect(
+              user=os.environ['SNOWFLAKE_USER'],
+              password=os.environ['SNOWFLAKE_PASSWORD'],
+              account=os.environ['SNOWFLAKE_ACCOUNT'],
+              warehouse=os.environ['SNOWFLAKE_WAREHOUSE'],
+              database=os.environ['SNOWFLAKE_DATABASE'],
+              schema=os.environ['SNOWFLAKE_SCHEMA'],
+              role=os.environ.get('SNOWFLAKE_ROLE')
+          )
+          cur = conn.cursor()
+          cur.execute("SELECT CURRENT_ACCOUNT(), CURRENT_ROLE(), CURRENT_DATABASE(), CURRENT_SCHEMA();")
+          print("✅ Connected:", cur.fetchone())
+          cur.close(); conn.close()
+          PY
+
+  deploy:
+    name: Run Snowflake deployment scripts
+    runs-on: ubuntu-latest
+    needs: validate
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install SnowSQL CLI
+        run: |
+          pip install --upgrade snowflake-cli-labs
+          snowsql -v
+
+      - name: Deploy SQL scripts (ordered)
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SQL_DIR: ${{ env.SQL_DIR }}
+        run: |
+          set -euo pipefail
+          echo "🏗️ Deploying to $SNOWFLAKE_DATABASE.$SNOWFLAKE_SCHEMA on $SNOWFLAKE_ACCOUNT"
+          for file in 01_create_tables.sql 02_seed_data.sql 03_transform.sql 04_data_quality_checks.sql; do
+            if [ -f "${SQL_DIR}/${file}" ]; then
+              echo "🚀 Running ${SQL_DIR}/${file}"
+              snowsql -a "$SNOWFLAKE_ACCOUNT" -u "$SNOWFLAKE_USER" -p "$SNOWFLAKE_PASSWORD" \
+                -w "$SNOWFLAKE_WAREHOUSE" -d "$SNOWFLAKE_DATABASE" -s "$SNOWFLAKE_SCHEMA" -r "$SNOWFLAKE_ROLE" \
+                -f "${SQL_DIR}/${file}" -o output_format=plain -o friendly=false
+            else
+              echo "⚠️ Skipping ${file} (not found)"
+            fi
+          done
+
+      - name: Post-deploy row count check
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+        run: |
+          snowsql -a "$SNOWFLAKE_ACCOUNT" -u "$SNOWFLAKE_USER" -p "$SNOWFLAKE_PASSWORD" \
+            -w "$SNOWFLAKE_WAREHOUSE" -d "$SNOWFLAKE_DATABASE" -s "$SNOWFLAKE_SCHEMA" -r "$SNOWFLAKE_ROLE" \
+            -q "SELECT 'patients' AS table_name, COUNT(*) AS rows FROM Research_Landing.PATIENTS
+                UNION ALL
+                SELECT 'trials', COUNT(*) FROM Research_Landing.TRIALS
+                UNION ALL
+                SELECT 'participation', COUNT(*) FROM Research_Landing.PARTICIPATION;"

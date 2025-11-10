@@ -1,22 +1,31 @@
 name: Snowflake CI/CD
 
 on:
+  # CI triggers
   push:
     branches:
-      - dev        # CI triggers on dev
+      - dev
+  # CD triggers via merged pull request
   pull_request:
     branches:
-      - main       # CD triggers on PR merge to main
-    types: [closed]
+      - main
+    types:
+      - closed
   workflow_dispatch:  # optional manual trigger
 
 env:
-  SQL_DIR: SnowflakeToSnowflake/sql
+  SQL_DIR: SnowflakeToSnowflake/sql  # path to your SQL scripts
 
+# ------------------------
+# CI: Dev / Staging
+# ------------------------
 jobs:
-  ci_cd:
-    name: CI/CD - Snowflake
+  ci_dev:
+    name: CI - Staging
     runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/dev'
+    env:
+      TARGET_SCHEMA: RESEARCH_LANDING  # schema for dev/staging
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -32,26 +41,18 @@ jobs:
           source venv/bin/activate
           pip install --upgrade pip
           pip install sqlfluff snowflake-connector-python
-          pip check
+
+      - name: Debug SQL directory visibility
+        run: |
+          echo "🔍 Checking contents of ${SQL_DIR}"
+          ls -l "${SQL_DIR}" || echo "::error::Directory not found: ${SQL_DIR}"
 
       - name: Lint SQL files
         run: |
           source venv/bin/activate
-          sqlfluff lint "${SQL_DIR}" --dialect snowflake || true
+          sqlfluff lint "${SQL_DIR}/" --dialect snowflake || true
 
-      - name: Determine Target Schema
-        id: schema
-        run: |
-          if [ "${GITHUB_REF}" == "refs/heads/dev" ]; then
-            echo "TARGET_SCHEMA=RESEARCH_LANDING" >> $GITHUB_ENV
-          elif [ "${GITHUB_EVENT_NAME}" == "pull_request" ]; then
-            echo "TARGET_SCHEMA=RESEARCH_PROD" >> $GITHUB_ENV
-          else
-            echo "TARGET_SCHEMA=RESEARCH_LANDING" >> $GITHUB_ENV
-          fi
-          echo "🔹 Using schema: $TARGET_SCHEMA"
-
-      - name: Run SQL scripts
+      - name: Run SQL scripts in Staging
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -66,6 +67,9 @@ jobs:
           python - <<'PY'
           import os, snowflake.connector
 
+          target_schema = os.environ['TARGET_SCHEMA']
+          sql_dir = os.environ['SQL_DIR']
+
           conn = snowflake.connector.connect(
               user=os.environ['SNOWFLAKE_USER'],
               password=os.environ['SNOWFLAKE_PASSWORD'],
@@ -74,34 +78,107 @@ jobs:
               database=os.environ['SNOWFLAKE_DATABASE'],
               role=os.environ.get('SNOWFLAKE_ROLE')
           )
-
           cur = conn.cursor()
-          sql_dir = os.environ['SQL_DIR']
-          target_schema = os.environ['TARGET_SCHEMA']
-          ordered_files = ["01_create_tables.sql", "02_seed_data.sql", "03_transform.sql", "04_data_quality_checks.sql"]
+
+          ordered_files = [
+              "01_create_tables.sql",
+              "02_seed_data.sql",
+              "03_transform.sql",
+              "04_data_quality_checks.sql"
+          ]
 
           for file in ordered_files:
               path = f"{sql_dir}/{file}"
               if os.path.isfile(path):
-                  print(f"🚀 Running {file} in schema {target_schema}")
+                  print(f"🚀 Running {file} in {target_schema}")
                   with open(path, 'r') as f:
-                      sql = f.read().replace("${TARGET_SCHEMA}", target_schema)
+                      sql = f.read()
+                      # Replace schema variable dynamically
+                      sql = sql.replace("${TARGET_SCHEMA}", target_schema)
                       for stmt in sql.split(';'):
                           if stmt.strip():
                               cur.execute(stmt)
               else:
                   print(f"⚠️ Skipping {file} (not found)")
 
-          # Optional: Row count check
-          cur.execute(f"""
-            SELECT 'patients' AS table_name, COUNT(*) AS "rows" FROM {target_schema}.PATIENTS
-            UNION ALL
-            SELECT 'trials', COUNT(*) AS "rows" FROM {target_schema}.TRIALS      
-            UNION ALL
-            SELECT 'participation', COUNT(*) AS "rows" FROM {target_schema}.PARTICIPATION;
-          """)
-          for row in cur.fetchall():
-              print(row)
+          cur.close()
+          conn.close()
+          PY
+
+# ------------------------
+# CD: Production
+# ------------------------
+  cd_prod:
+    name: CD - Production
+    runs-on: ubuntu-latest
+    needs: ci_dev
+    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
+    env:
+      TARGET_SCHEMA: RESEARCH_PROD  # schema for production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install snowflake-connector-python
+
+      - name: Run SQL scripts in Production
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SQL_DIR: ${{ env.SQL_DIR }}
+          TARGET_SCHEMA: ${{ env.TARGET_SCHEMA }}
+        run: |
+          source venv/bin/activate
+          python - <<'PY'
+          import os, snowflake.connector
+
+          target_schema = os.environ['TARGET_SCHEMA']
+          sql_dir = os.environ['SQL_DIR']
+
+          conn = snowflake.connector.connect(
+              user=os.environ['SNOWFLAKE_USER'],
+              password=os.environ['SNOWFLAKE_PASSWORD'],
+              account=os.environ['SNOWFLAKE_ACCOUNT'],
+              warehouse=os.environ['SNOWFLAKE_WAREHOUSE'],
+              database=os.environ['SNOWFLAKE_DATABASE'],
+              role=os.environ.get('SNOWFLAKE_ROLE')
+          )
+          cur = conn.cursor()
+
+          ordered_files = [
+              "01_create_tables.sql",
+              "02_seed_data.sql",
+              "03_transform.sql",
+              "04_data_quality_checks.sql"
+          ]
+
+          for file in ordered_files:
+              path = f"{sql_dir}/{file}"
+              if os.path.isfile(path):
+                  print(f"🚀 Running {file} in {target_schema}")
+                  with open(path, 'r') as f:
+                      sql = f.read()
+                      # Replace schema variable dynamically
+                      sql = sql.replace("${TARGET_SCHEMA}", target_schema)
+                      for stmt in sql.split(';'):
+                          if stmt.strip():
+                              cur.execute(stmt)
+              else:
+                  print(f"⚠️ Skipping {file} (not found)")
 
           cur.close()
           conn.close()

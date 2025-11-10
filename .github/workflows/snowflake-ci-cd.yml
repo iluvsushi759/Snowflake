@@ -75,8 +75,8 @@ jobs:
     name: Run Snowflake deployment scripts
     runs-on: ubuntu-latest
     needs: validate
-    container:
-      image: ghcr.io/snowflakedb/snowsql:latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
@@ -98,9 +98,17 @@ jobs:
           for file in 01_create_tables.sql 02_seed_data.sql 03_transform.sql 04_data_quality_checks.sql; do
             if [ -f "${SQL_DIR}/${file}" ]; then
               echo "🚀 Running ${SQL_DIR}/${file}"
-              snowsql -a "$SNOWFLAKE_ACCOUNT" -u "$SNOWFLAKE_USER" -p "$SNOWFLAKE_PASSWORD" \
-                -w "$SNOWFLAKE_WAREHOUSE" -d "$SNOWFLAKE_DATABASE" -s "$SNOWFLAKE_SCHEMA" -r "$SNOWFLAKE_ROLE" \
-                -f "${SQL_DIR}/${file}" -o output_format=plain -o friendly=false
+              docker run --rm \
+                -e SNOWFLAKE_ACCOUNT="$SNOWFLAKE_ACCOUNT" \
+                -e SNOWFLAKE_USER="$SNOWFLAKE_USER" \
+                -e SNOWFLAKE_PASSWORD="$SNOWFLAKE_PASSWORD" \
+                -e SNOWFLAKE_WAREHOUSE="$SNOWFLAKE_WAREHOUSE" \
+                -e SNOWFLAKE_DATABASE="$SNOWFLAKE_DATABASE" \
+                -e SNOWFLAKE_SCHEMA="$SNOWFLAKE_SCHEMA" \
+                -e SNOWFLAKE_ROLE="$SNOWFLAKE_ROLE" \
+                -v ${{ github.workspace }}/sql:/sql \
+                ghcr.io/snowflakedb/snowsql:latest \
+                snowsql -f "/sql/${file}" -o output_format=plain -o friendly=false
             else
               echo "⚠️ Skipping ${file} (not found)"
             fi
@@ -116,10 +124,17 @@ jobs:
           SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
           SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          snowsql -a "$SNOWFLAKE_ACCOUNT" -u "$SNOWFLAKE_USER" -p "$SNOWFLAKE_PASSWORD" \
-            -w "$SNOWFLAKE_WAREHOUSE" -d "$SNOWFLAKE_DATABASE" -s "$SNOWFLAKE_SCHEMA" -r "$SNOWFLAKE_ROLE" \
-            -q "SELECT 'patients' AS table_name, COUNT(*) AS rows FROM Research_Landing.PATIENTS
-                UNION ALL
-                SELECT 'trials', COUNT(*) FROM Research_Landing.TRIALS
-                UNION ALL
-                SELECT 'participation', COUNT(*) FROM Research_Landing.PARTICIPATION;"
+          docker run --rm \
+            -e SNOWFLAKE_ACCOUNT="$SNOWFLAKE_ACCOUNT" \
+            -e SNOWFLAKE_USER="$SNOWFLAKE_USER" \
+            -e SNOWFLAKE_PASSWORD="$SNOWFLAKE_PASSWORD" \
+            -e SNOWFLAKE_WAREHOUSE="$SNOWFLAKE_WAREHOUSE" \
+            -e SNOWFLAKE_DATABASE="$SNOWFLAKE_DATABASE" \
+            -e SNOWFLAKE_SCHEMA="$SNOWFLAKE_SCHEMA" \
+            -e SNOWFLAKE_ROLE="$SNOWFLAKE_ROLE" \
+            ghcr.io/snowflakedb/snowsql:latest \
+            snowsql -q "SELECT 'patients' AS table_name, COUNT(*) AS rows FROM Research_Landing.PATIENTS
+                        UNION ALL
+                        SELECT 'trials', COUNT(*) FROM Research_Landing.TRIALS
+                        UNION ALL
+                        SELECT 'participation', COUNT(*) FROM Research_Landing.PARTICIPATION;"

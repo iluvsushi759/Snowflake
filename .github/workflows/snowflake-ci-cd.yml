@@ -1,0 +1,157 @@
+name: Snowflake CI/CD
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+env:
+  SQL_DIR: SnowflakeToSnowflake/sql
+
+jobs:
+  validate_and_deploy:
+    name: Validate and Deploy SQL to Snowflake
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m venv venv
+          source venv/bin/activate
+          pip install --upgrade pip
+          pip install sqlfluff snowflake-connector-python
+          pip check
+
+      - name: Debug SQL directory visibility
+        run: |
+          echo "🔍 Checking contents of ${SQL_DIR}"
+          ls -l "${SQL_DIR}" || echo "::error::Directory not found: ${SQL_DIR}"
+
+      - name: Lint SQL files (Snowflake dialect)
+        run: |
+          source venv/bin/activate
+          sqlfluff --version
+          if [ -d "${SQL_DIR}" ]; then
+            # Run linting but never fail the job
+            sqlfluff lint "${SQL_DIR}/" --dialect snowflake || true
+          else
+            echo "::warning::SQL directory '${SQL_DIR}' not found. Skipping lint."
+          fi
+
+      - name: Test Snowflake connection
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+        run: |
+          source venv/bin/activate
+          python - <<'PY'
+          import os, snowflake.connector
+          conn = snowflake.connector.connect(
+              user=os.environ['SNOWFLAKE_USER'],
+              password=os.environ['SNOWFLAKE_PASSWORD'],
+              account=os.environ['SNOWFLAKE_ACCOUNT'],
+              warehouse=os.environ['SNOWFLAKE_WAREHOUSE'],
+              database=os.environ['SNOWFLAKE_DATABASE'],
+              schema=os.environ['SNOWFLAKE_SCHEMA'],
+              role=os.environ.get('SNOWFLAKE_ROLE')
+          )
+          cur = conn.cursor()
+          cur.execute("SELECT CURRENT_ACCOUNT(), CURRENT_ROLE(), CURRENT_DATABASE(), CURRENT_SCHEMA();")
+          print("✅ Connected:", cur.fetchone())
+          cur.close(); conn.close()
+          PY
+
+      - name: Run SQL scripts via Python
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          SQL_DIR: ${{ env.SQL_DIR }}
+        run: |
+          source venv/bin/activate
+          python - <<'PY'
+          import os, snowflake.connector
+
+          conn = snowflake.connector.connect(
+              user=os.environ['SNOWFLAKE_USER'],
+              password=os.environ['SNOWFLAKE_PASSWORD'],
+              account=os.environ['SNOWFLAKE_ACCOUNT'],
+              warehouse=os.environ['SNOWFLAKE_WAREHOUSE'],
+              database=os.environ['SNOWFLAKE_DATABASE'],
+              schema=os.environ['SNOWFLAKE_SCHEMA'],
+              role=os.environ.get('SNOWFLAKE_ROLE')
+          )
+          cur = conn.cursor()
+          sql_dir = os.environ['SQL_DIR']
+          ordered_files = ["01_create_tables.sql", "02_seed_data.sql", "03_transform.sql", "04_data_quality_checks.sql"]
+
+          for file in ordered_files:
+              path = f"{sql_dir}/{file}"
+              if os.path.isfile(path):
+                  print(f"🚀 Running {file}")
+                  with open(path, 'r') as f:
+                      sql = f.read()
+                      for stmt in sql.split(';'):
+                          if stmt.strip():
+                              cur.execute(stmt)
+              else:
+                  print(f"⚠️ Skipping {file} (not found)")
+
+          cur.close(); conn.close()
+          PY
+
+      - name: Post-deploy row count check
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+        run: |
+          source venv/bin/activate
+          python - <<'PY'
+          import os, snowflake.connector
+
+          conn = snowflake.connector.connect(
+              user=os.environ['SNOWFLAKE_USER'],
+              password=os.environ['SNOWFLAKE_PASSWORD'],
+              account=os.environ['SNOWFLAKE_ACCOUNT'],
+              warehouse=os.environ['SNOWFLAKE_WAREHOUSE'],
+              database=os.environ['SNOWFLAKE_DATABASE'],
+              schema=os.environ['SNOWFLAKE_SCHEMA'],
+              role=os.environ.get('SNOWFLAKE_ROLE')
+          )
+          cur = conn.cursor()
+          cur.execute("""
+            SELECT 'patients' AS table_name, COUNT(*) AS "rows" FROM Research_Landing.PATIENTS
+            UNION ALL
+            SELECT 'trials', COUNT(*) AS "rows" FROM Research_Landing.TRIALS      
+            UNION ALL
+            SELECT 'participation', COUNT(*) AS "rows" FROM Research_Landing.PARTICIPATION;
+          """)
+          for row in cur.fetchall():
+              print(row)
+          cur.close(); conn.close()
+          PY

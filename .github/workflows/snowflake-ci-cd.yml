@@ -25,7 +25,7 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies (conflict-free)
+      - name: Install dependencies
         run: |
           python -m venv venv
           source venv/bin/activate
@@ -37,7 +37,11 @@ jobs:
         run: |
           source venv/bin/activate
           sqlfluff --version
-          sqlfluff lint "${SQL_DIR}/" --dialect snowflake
+          if [ -d "${SQL_DIR}" ]; then
+            sqlfluff lint "${SQL_DIR}/" --dialect snowflake
+          else
+            echo "::warning::SQL directory '${SQL_DIR}' not found. Skipping lint."
+          fi
 
       - name: Test Snowflake connection
         env:

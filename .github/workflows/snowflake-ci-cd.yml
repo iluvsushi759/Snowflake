@@ -5,17 +5,15 @@ on:
   push:
     branches:
       - dev
-  # CD triggers on PR merge
+  # CD triggers (PR merged to main)
   pull_request:
+    types: [closed]
     branches:
       - main
-    types:
-      - closed
-  workflow_dispatch:  # optional manual trigger
+  workflow_dispatch: # optional manual trigger
 
 env:
   SQL_DIR: SnowflakeToSnowflake/sql
-  TARGET_SCHEMA: RESEARCH_LANDING  # default for CI (dev)
 
 jobs:
   # ------------------------
@@ -42,11 +40,6 @@ jobs:
           pip install sqlfluff snowflake-connector-python
           pip check
 
-      - name: Debug SQL directory visibility
-        run: |
-          echo "🔍 Checking contents of ${SQL_DIR}"
-          ls -l "${SQL_DIR}" || echo "::error::Directory not found: ${SQL_DIR}"
-
       - name: Lint SQL files
         run: |
           source venv/bin/activate
@@ -59,6 +52,7 @@ jobs:
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
           SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: RESEARCH_LANDING
           SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
           SQL_DIR: ${{ env.SQL_DIR }}
           TARGET_SCHEMA: RESEARCH_LANDING
@@ -73,23 +67,20 @@ jobs:
               account=os.environ['SNOWFLAKE_ACCOUNT'],
               warehouse=os.environ['SNOWFLAKE_WAREHOUSE'],
               database=os.environ['SNOWFLAKE_DATABASE'],
+              schema=os.environ['SNOWFLAKE_SCHEMA'],
               role=os.environ.get('SNOWFLAKE_ROLE')
           )
           cur = conn.cursor()
-          target_schema = os.environ['TARGET_SCHEMA']
-
-          # Set current schema for session
-          cur.execute(f"USE SCHEMA {target_schema}")
-
           sql_dir = os.environ['SQL_DIR']
+          target_schema = os.environ['TARGET_SCHEMA']
           ordered_files = ["01_create_tables.sql", "02_seed_data.sql", "03_transform.sql", "04_data_quality_checks.sql"]
 
           for file in ordered_files:
               path = f"{sql_dir}/{file}"
               if os.path.isfile(path):
-                  print(f"🚀 Running {file} in schema {target_schema}")
+                  print(f"🚀 Running {file} in STAGING ({target_schema})")
                   with open(path, 'r') as f:
-                      sql = f.read().replace("${TARGET_SCHEMA}", target_schema)
+                      sql = f.read().replace('${TARGET_SCHEMA}', target_schema)
                       for stmt in sql.split(';'):
                           if stmt.strip():
                               cur.execute(stmt)
@@ -107,7 +98,7 @@ jobs:
     name: CD - Production
     runs-on: ubuntu-latest
     needs: ci_dev
-    if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
+    if: github.event.pull_request.merged == true
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -131,6 +122,7 @@ jobs:
           SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
           SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_SCHEMA: RESEARCH_PROD
           SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
           SQL_DIR: ${{ env.SQL_DIR }}
           TARGET_SCHEMA: RESEARCH_PROD
@@ -145,23 +137,20 @@ jobs:
               account=os.environ['SNOWFLAKE_ACCOUNT'],
               warehouse=os.environ['SNOWFLAKE_WAREHOUSE'],
               database=os.environ['SNOWFLAKE_DATABASE'],
+              schema=os.environ['SNOWFLAKE_SCHEMA'],
               role=os.environ.get('SNOWFLAKE_ROLE')
           )
           cur = conn.cursor()
-          target_schema = os.environ['TARGET_SCHEMA']
-
-          # Set current schema for session
-          cur.execute(f"USE SCHEMA {target_schema}")
-
           sql_dir = os.environ['SQL_DIR']
+          target_schema = os.environ['TARGET_SCHEMA']
           ordered_files = ["01_create_tables.sql", "02_seed_data.sql", "03_transform.sql", "04_data_quality_checks.sql"]
 
           for file in ordered_files:
               path = f"{sql_dir}/{file}"
               if os.path.isfile(path):
-                  print(f"🚀 Running {file} in schema {target_schema}")
+                  print(f"🚀 Running {file} in PROD ({target_schema})")
                   with open(path, 'r') as f:
-                      sql = f.read().replace("${TARGET_SCHEMA}", target_schema)
+                      sql = f.read().replace('${TARGET_SCHEMA}', target_schema)
                       for stmt in sql.split(';'):
                           if stmt.strip():
                               cur.execute(stmt)

@@ -12,22 +12,22 @@ This is especially critical in environments like Snowflake where:
 
 
 -- Create a view summarizing patient-trial relationships
+-- Create a view summarizing patient-trial relationships
 CREATE OR REPLACE VIEW RESEARCH_LANDING.PATIENT_TRIAL_SUMMARY AS
 SELECT
-    P.FIRST_NAME,
-    P.LAST_NAME,
+    P.FIRST_NAME || ' ' || P.LAST_NAME AS FULL_NAME,
     P.GENDER,
     P.DOB,
     T.TRIAL_NAME,
     T.MEDICAL_CONDITION,
     PT.PARTICIPATION_STATUS,
-    PT.CONSENT_DATE,
-    P.FIRST_NAME || ' ' || P.LAST_NAME AS FULL_NAME
+    PT.CONSENT_DATE
 FROM RESEARCH_LANDING.PATIENTS AS P
 JOIN RESEARCH_LANDING.PARTICIPATION AS PT
     ON P.PATIENT_ID = PT.PATIENT_ID
 JOIN RESEARCH_LANDING.TRIALS AS T
     ON PT.TRIAL_ID = T.TRIAL_ID;
+
 
 
 -- This view provides a consolidated look at patients and their trial participation

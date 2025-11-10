@@ -2,29 +2,20 @@
 dialect = snowflake
 templater = jinja
 
-# General linting behavior
-exclude_rules = L009  # optional: ignore line length globally if you prefer
-
-[sqlfluff:rules:RF04]
-# Whitelist specific identifiers that contain reserved words
+[sqlfluff:rules:references.keywords]
 ignore_words = TRIAL_PHASE, MEDICAL_CONDITION, PARTICIPATION_STATUS
 
-[sqlfluff:rules:RF06]
-# Allow quoted identifiers without complaint
+[sqlfluff:rules:references.quoting]
 ignore_words = TRIAL_PHASE, MEDICAL_CONDITION, PARTICIPATION_STATUS
 
-[sqlfluff:rules:CP02]
-# Optional: relax capitalization enforcement
+[sqlfluff:rules:capitalisation.identifiers]
 capitalisation_policy = consistent
 
-[sqlfluff:rules:AM05]
-# Downgrade ambiguous join warnings to info so they don't fail CI/CD
-severity = info
+[sqlfluff:rules:ambiguous.join]
+severity = warning
 
-[sqlfluff:rules:LT05]
-# Downgrade long line warnings to info
-severity = info
+[sqlfluff:rules:layout.long_lines]
+severity = warning
 
-[sqlfluff:rules:LT09]
-# Downgrade select target layout warnings to info
-severity = info
+[sqlfluff:rules:layout.select_targets]
+severity = warning

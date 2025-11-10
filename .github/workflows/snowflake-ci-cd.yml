@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 env:
-  SQL_DIR: sql
+  SQL_DIR: SnowflakeToSnowflake/sql
 
 jobs:
   validate_and_deploy:
@@ -32,6 +32,11 @@ jobs:
           pip install --upgrade pip
           pip install sqlfluff snowflake-connector-python
           pip check
+
+      - name: Debug SQL directory visibility
+        run: |
+          echo "🔍 Checking contents of ${SQL_DIR}"
+          ls -l "${SQL_DIR}" || echo "::error::Directory not found: ${SQL_DIR}"
 
       - name: Lint SQL files (Snowflake dialect)
         run: |

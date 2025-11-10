@@ -5,7 +5,7 @@ on:
   push:
     branches:
       - dev
-  # CD triggers via merged pull request
+  # CD triggers via pull request merged to main
   pull_request:
     branches:
       - main
@@ -14,18 +14,18 @@ on:
   workflow_dispatch:  # optional manual trigger
 
 env:
-  SQL_DIR: SnowflakeToSnowflake/sql  # path to your SQL scripts
+  SQL_DIR: SnowflakeToSnowflake/sql
+  TARGET_SCHEMA_DEV: RESEARCH_LANDING
+  TARGET_SCHEMA_PROD: RESEARCH_PROD
 
-# ------------------------
-# CI: Dev / Staging
-# ------------------------
 jobs:
+  # ------------------------
+  # CI: Dev / Staging
+  # ------------------------
   ci_dev:
     name: CI - Staging
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/dev'
-    env:
-      TARGET_SCHEMA: RESEARCH_LANDING  # schema for dev/staging
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -41,6 +41,7 @@ jobs:
           source venv/bin/activate
           pip install --upgrade pip
           pip install sqlfluff snowflake-connector-python
+          pip check
 
       - name: Debug SQL directory visibility
         run: |
@@ -61,14 +62,11 @@ jobs:
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
           SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
           SQL_DIR: ${{ env.SQL_DIR }}
-          TARGET_SCHEMA: ${{ env.TARGET_SCHEMA }}
+          TARGET_SCHEMA: ${{ env.TARGET_SCHEMA_DEV }}
         run: |
           source venv/bin/activate
           python - <<'PY'
           import os, snowflake.connector
-
-          target_schema = os.environ['TARGET_SCHEMA']
-          sql_dir = os.environ['SQL_DIR']
 
           conn = snowflake.connector.connect(
               user=os.environ['SNOWFLAKE_USER'],
@@ -80,21 +78,18 @@ jobs:
           )
           cur = conn.cursor()
 
-          ordered_files = [
-              "01_create_tables.sql",
-              "02_seed_data.sql",
-              "03_transform.sql",
-              "04_data_quality_checks.sql"
-          ]
+          target_schema = os.environ['TARGET_SCHEMA']
+          cur.execute(f"USE SCHEMA {target_schema}")  # <-- ensure schema is set
+
+          sql_dir = os.environ['SQL_DIR']
+          ordered_files = ["01_create_tables.sql", "02_seed_data.sql", "03_transform.sql", "04_data_quality_checks.sql"]
 
           for file in ordered_files:
               path = f"{sql_dir}/{file}"
               if os.path.isfile(path):
                   print(f"🚀 Running {file} in {target_schema}")
                   with open(path, 'r') as f:
-                      sql = f.read()
-                      # Replace schema variable dynamically
-                      sql = sql.replace("${TARGET_SCHEMA}", target_schema)
+                      sql = f.read().replace("${TARGET_SCHEMA}", target_schema)
                       for stmt in sql.split(';'):
                           if stmt.strip():
                               cur.execute(stmt)
@@ -105,16 +100,14 @@ jobs:
           conn.close()
           PY
 
-# ------------------------
-# CD: Production
-# ------------------------
+  # ------------------------
+  # CD: Production
+  # ------------------------
   cd_prod:
     name: CD - Production
     runs-on: ubuntu-latest
     needs: ci_dev
     if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
-    env:
-      TARGET_SCHEMA: RESEARCH_PROD  # schema for production
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -140,14 +133,11 @@ jobs:
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
           SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
           SQL_DIR: ${{ env.SQL_DIR }}
-          TARGET_SCHEMA: ${{ env.TARGET_SCHEMA }}
+          TARGET_SCHEMA: ${{ env.TARGET_SCHEMA_PROD }}
         run: |
           source venv/bin/activate
           python - <<'PY'
           import os, snowflake.connector
-
-          target_schema = os.environ['TARGET_SCHEMA']
-          sql_dir = os.environ['SQL_DIR']
 
           conn = snowflake.connector.connect(
               user=os.environ['SNOWFLAKE_USER'],
@@ -159,21 +149,18 @@ jobs:
           )
           cur = conn.cursor()
 
-          ordered_files = [
-              "01_create_tables.sql",
-              "02_seed_data.sql",
-              "03_transform.sql",
-              "04_data_quality_checks.sql"
-          ]
+          target_schema = os.environ['TARGET_SCHEMA']
+          cur.execute(f"USE SCHEMA {target_schema}")  # <-- ensure schema is set
+
+          sql_dir = os.environ['SQL_DIR']
+          ordered_files = ["01_create_tables.sql", "02_seed_data.sql", "03_transform.sql", "04_data_quality_checks.sql"]
 
           for file in ordered_files:
               path = f"{sql_dir}/{file}"
               if os.path.isfile(path):
                   print(f"🚀 Running {file} in {target_schema}")
                   with open(path, 'r') as f:
-                      sql = f.read()
-                      # Replace schema variable dynamically
-                      sql = sql.replace("${TARGET_SCHEMA}", target_schema)
+                      sql = f.read().replace("${TARGET_SCHEMA}", target_schema)
                       for stmt in sql.split(';'):
                           if stmt.strip():
                               cur.execute(stmt)

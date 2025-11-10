@@ -139,11 +139,11 @@ jobs:
           )
           cur = conn.cursor()
           cur.execute("""
-              SELECT 'patients' AS table_name, COUNT(*) AS rows FROM Research_Landing.PATIENTS
-              UNION ALL
-              SELECT 'trials', COUNT(*) FROM Research_Landing.TRIALS
-              UNION ALL
-              SELECT 'participation', COUNT(*) FROM Research_Landing.PARTICIPATION;
+            SELECT 'patients' AS table_name, COUNT(*) AS "rows" FROM Research_Landing.PATIENTS
+            UNION ALL
+            SELECT 'trials', COUNT(*) AS "rows" FROM Research_Landing.TRIALS      
+            UNION ALL
+            SELECT 'participation', COUNT(*) AS "rows" FROM Research_Landing.PARTICIPATION;
           """)
           for row in cur.fetchall():
               print(row)

@@ -2,20 +2,26 @@
 dialect = snowflake
 templater = jinja
 
+# Reserved keywords rule (RF04)
 [sqlfluff:rules:references.keywords]
-ignore_words = TRIAL_PHASE, MEDICAL_CONDITION, PARTICIPATION_STATUS
+ignore_words = TRIAL_STAGE, DIAGNOSIS, PARTICIPATION_STATUS
 
+# Quoting rule (RF06)
 [sqlfluff:rules:references.quoting]
-ignore_words = TRIAL_PHASE, MEDICAL_CONDITION, PARTICIPATION_STATUS
+ignore_words = TRIAL_STAGE, DIAGNOSIS, PARTICIPATION_STATUS
 
+# Capitalisation rule (CP02)
 [sqlfluff:rules:capitalisation.identifiers]
 capitalisation_policy = consistent
 
+# Ambiguous join rule (AM05)
 [sqlfluff:rules:ambiguous.join]
 severity = warning
 
+# Long lines rule (LT05)
 [sqlfluff:rules:layout.long_lines]
 severity = warning
 
+# Select targets layout rule (LT09)
 [sqlfluff:rules:layout.select_targets]
 severity = warning

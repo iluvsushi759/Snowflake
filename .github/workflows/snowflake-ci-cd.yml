@@ -84,8 +84,10 @@ jobs:
 
       - name: Install SnowSQL CLI
         run: |
-          pip install --upgrade snowflake-cli-labs
-          snowsql -v
+          curl -O https://sfc-repo.snowflakecomputing.com/snowsql/bootstrap/1.2/linux_x86_64/snowsql-linux_x86_64.bash
+          bash snowsql-linux_x86_64.bash
+          echo "$HOME/.snowsql" >> $GITHUB_PATH
+          ~/.snowsql/snowsql -v
 
       - name: Deploy SQL scripts (ordered)
         env:

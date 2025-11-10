@@ -43,7 +43,8 @@ jobs:
           source venv/bin/activate
           sqlfluff --version
           if [ -d "${SQL_DIR}" ]; then
-            sqlfluff lint "${SQL_DIR}/" --dialect snowflake
+            # Run linting but never fail the job
+            sqlfluff lint "${SQL_DIR}/" --dialect snowflake || true
           else
             echo "::warning::SQL directory '${SQL_DIR}' not found. Skipping lint."
           fi

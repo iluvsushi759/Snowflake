@@ -1,12 +1,11 @@
 name: Snowflake CI/CD
 
 on:
-  # CI triggers
   push:
     branches:
       - dev
-      - main   # <-- ensures CD runs on push/merge to main
-  workflow_dispatch: # optional manual trigger
+      - main   # ensures CD runs on main
+  workflow_dispatch:
 
 env:
   SQL_DIR: SnowflakeToSnowflake/sql
@@ -18,7 +17,6 @@ jobs:
   ci_dev:
     name: CI - Staging
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/dev'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -96,7 +94,7 @@ jobs:
     needs: ci_dev
     if: github.ref == 'refs/heads/main'
     environment:
-      name: production   # <-- requires manual approval before running
+      name: production  # requires manual approval
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

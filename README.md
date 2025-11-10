@@ -8,7 +8,7 @@ SnowflakeToSnowflake/SQL/04_data_quality_checks.sql
 
 **Activation**  
 YML script is placed in the .github/workflow directory.  This is where we will control our workflow
-.sql  
+.sql  In process of doing something else.
 
 
 **Linting Option**  

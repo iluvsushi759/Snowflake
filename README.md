@@ -1,19 +1,20 @@
 # Snowflake
-this repo is for a quick demo of how to perform CI/CD.  There are 3 .SQL scripts located at:  
+this repo is for a quick demo of how to perform CI/CD.  There are 4 .SQL scripts located at:  
 
-SnowflakeToSnowflake/SQL/01_create_tables.sql
-SnowflakeToSnowflake/SQL/02_seed_data.sql
-SnowflakeToSnowflake/SQL/03_transform.sql
-SnowflakeToSnowflake/SQL/04_data_quality_checks.sql
+SnowflakeToSnowflake/SQL/01_create_tables.sql  
+SnowflakeToSnowflake/SQL/02_seed_data.sql  
+SnowflakeToSnowflake/SQL/03_transform.sql  
+SnowflakeToSnowflake/SQL/04_data_quality_checks.sql  
 
-**Activation**
+**Activation**  
 YML script is placed in the .github/workflow directory.  This is where we will control our workflow
-.sql
+.sql  
 
-**Linting Option**
+
+**Linting Option**  
 I'm using SQLFluff and unfortunately, it's VERY strict, so I created this config file to make exceptions.
 
-**Script Sequence**
+**Script Sequence**  
 
 **1️⃣	01_create_tables.sql** -- Creates the core database tables in Snowflake, defining schema structures, data  types, and constraints. This establishes the foundational data model for all subsequent operations.
 
@@ -30,21 +31,21 @@ I chose to rather not have my CI as part of the test and CD as the prod but sepe
 
 **Why This Approach**
 
-This modular, step-by-step pipeline offers several benefits:
+This modular, step-by-step pipeline offers several benefits:  
 
-* Clear Separation of Concerns: Each script has a single purpose—creation, loading, transformation, or validation—making debugging and maintenance easier.
+* Clear Separation of Concerns: Each script has a single purpose—creation, loading, transformation, or validation—making debugging and maintenance easier.  
 
-* Reproducible CI/CD: The workflow can be re-run from scratch at any time with consistent results.
+* Reproducible CI/CD: The workflow can be re-run from scratch at any time with consistent results.  
 
-* Scalable Design: As new tables or transformations are added, new scripts can be appended without impacting existing steps.
+* Scalable Design: As new tables or transformations are added, new scripts can be appended without impacting existing steps.  
 
-* Transparency and Auditability: Each stage is visible in GitHub and traceable in CI/CD logs, ensuring full visibility into what’s deployed and why.
+* Transparency and Auditability: Each stage is visible in GitHub and traceable in CI/CD logs, ensuring full visibility into what’s deployed and why.  
 
-* Data Quality Assurance: The final validation step ensures that downstream consumers only interact with verified data.
+* Data Quality Assurance: The final validation step ensures that downstream consumers only interact with verified data.  
 
-**Aplication**
+**Aplication**  
 
-This demo can be also used in other applications such as:
-* inserting or changing code in your terminal and pushing this to have immediate testing
+This demo can be also used in other applications such as:  
+* inserting or changing code in your terminal and pushing this to have immediate testing  
 * ROLLBACK option - if we make a change we can easily re-apply our former state.  As long as the older commit that is pointing to still has it's files within S3 and hasn't changed, we can perform this.  This is a code change tracker where we can revert structure and possibly data.
 

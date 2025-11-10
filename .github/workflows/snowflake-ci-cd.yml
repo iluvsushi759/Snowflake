@@ -5,25 +5,24 @@ on:
   push:
     branches:
       - dev
-  # CD triggers (via merged PR to main)
+  # CD triggers on PR merge
   pull_request:
     branches:
       - main
     types:
       - closed
-  workflow_dispatch:
+  workflow_dispatch:  # optional manual trigger
 
 env:
   SQL_DIR: SnowflakeToSnowflake/sql
-  TARGET_SCHEMA_DEV: RESEARCH_LANDING
-  TARGET_SCHEMA_PROD: RESEARCH_PROD
+  TARGET_SCHEMA: RESEARCH_LANDING  # default for CI (dev)
 
 jobs:
   # ------------------------
-  # CI: Staging / Dev
+  # CI: Dev / Staging
   # ------------------------
   ci_dev:
-    name: CI - Dev / Staging
+    name: CI - Staging
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/dev'
     steps:
@@ -43,17 +42,17 @@ jobs:
           pip install sqlfluff snowflake-connector-python
           pip check
 
-      - name: Debug SQL directory
+      - name: Debug SQL directory visibility
         run: |
-          echo "🔍 Contents of ${SQL_DIR}:"
-          ls -l "${SQL_DIR}" || echo "::warning::Directory not found"
+          echo "🔍 Checking contents of ${SQL_DIR}"
+          ls -l "${SQL_DIR}" || echo "::error::Directory not found: ${SQL_DIR}"
 
       - name: Lint SQL files
         run: |
           source venv/bin/activate
           sqlfluff lint "${SQL_DIR}/" --dialect snowflake || true
 
-      - name: Run SQL scripts in Dev/Staging
+      - name: Run SQL scripts in Staging
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -62,7 +61,7 @@ jobs:
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
           SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
           SQL_DIR: ${{ env.SQL_DIR }}
-          TARGET_SCHEMA: ${{ env.TARGET_SCHEMA_DEV }}
+          TARGET_SCHEMA: RESEARCH_LANDING
         run: |
           source venv/bin/activate
           python - <<'PY'
@@ -77,15 +76,13 @@ jobs:
               role=os.environ.get('SNOWFLAKE_ROLE')
           )
           cur = conn.cursor()
-          sql_dir = os.environ['SQL_DIR']
           target_schema = os.environ['TARGET_SCHEMA']
 
-          ordered_files = [
-              "01_create_tables.sql",
-              "02_seed_data.sql",
-              "03_transform.sql",
-              "04_data_quality_checks.sql"
-          ]
+          # Set current schema for session
+          cur.execute(f"USE SCHEMA {target_schema}")
+
+          sql_dir = os.environ['SQL_DIR']
+          ordered_files = ["01_create_tables.sql", "02_seed_data.sql", "03_transform.sql", "04_data_quality_checks.sql"]
 
           for file in ordered_files:
               path = f"{sql_dir}/{file}"
@@ -136,7 +133,7 @@ jobs:
           SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
           SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
           SQL_DIR: ${{ env.SQL_DIR }}
-          TARGET_SCHEMA: ${{ env.TARGET_SCHEMA_PROD }}
+          TARGET_SCHEMA: RESEARCH_PROD
         run: |
           source venv/bin/activate
           python - <<'PY'
@@ -151,15 +148,13 @@ jobs:
               role=os.environ.get('SNOWFLAKE_ROLE')
           )
           cur = conn.cursor()
-          sql_dir = os.environ['SQL_DIR']
           target_schema = os.environ['TARGET_SCHEMA']
 
-          ordered_files = [
-              "01_create_tables.sql",
-              "02_seed_data.sql",
-              "03_transform.sql",
-              "04_data_quality_checks.sql"
-          ]
+          # Set current schema for session
+          cur.execute(f"USE SCHEMA {target_schema}")
+
+          sql_dir = os.environ['SQL_DIR']
+          ordered_files = ["01_create_tables.sql", "02_seed_data.sql", "03_transform.sql", "04_data_quality_checks.sql"]
 
           for file in ordered_files:
               path = f"{sql_dir}/{file}"

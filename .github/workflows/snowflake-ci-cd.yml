@@ -25,13 +25,12 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies (isolated)
+      - name: Install dependencies (conflict-free)
         run: |
           python -m venv venv
           source venv/bin/activate
           pip install --upgrade pip
-          pip install sqlfluff sqlfluff-templater-jinja2
-          pip install snowflake-connector-python
+          pip install sqlfluff snowflake-connector-python
           pip check
 
       - name: Lint SQL files (Snowflake dialect)

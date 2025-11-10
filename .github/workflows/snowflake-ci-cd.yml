@@ -82,7 +82,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Deploy SQL scripts (ordered)
+      - name: Run SQL scripts via Python
         env:
           SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
           SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
@@ -93,26 +93,36 @@ jobs:
           SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
           SQL_DIR: ${{ env.SQL_DIR }}
         run: |
-          set -euo pipefail
-          echo "🏗️ Deploying to $SNOWFLAKE_DATABASE.$SNOWFLAKE_SCHEMA on $SNOWFLAKE_ACCOUNT"
-          for file in 01_create_tables.sql 02_seed_data.sql 03_transform.sql 04_data_quality_checks.sql; do
-            if [ -f "${SQL_DIR}/${file}" ]; then
-              echo "🚀 Running ${SQL_DIR}/${file}"
-              docker run --rm \
-                -e SNOWFLAKE_ACCOUNT="$SNOWFLAKE_ACCOUNT" \
-                -e SNOWFLAKE_USER="$SNOWFLAKE_USER" \
-                -e SNOWFLAKE_PASSWORD="$SNOWFLAKE_PASSWORD" \
-                -e SNOWFLAKE_WAREHOUSE="$SNOWFLAKE_WAREHOUSE" \
-                -e SNOWFLAKE_DATABASE="$SNOWFLAKE_DATABASE" \
-                -e SNOWFLAKE_SCHEMA="$SNOWFLAKE_SCHEMA" \
-                -e SNOWFLAKE_ROLE="$SNOWFLAKE_ROLE" \
-                -v ${{ github.workspace }}/sql:/sql \
-                ghcr.io/snowflakedb/snowsql:latest \
-                snowsql -f "/sql/${file}" -o output_format=plain -o friendly=false
-            else
-              echo "⚠️ Skipping ${file} (not found)"
-            fi
-          done
+          python - <<'PY'
+          import os, snowflake.connector
+
+          conn = snowflake.connector.connect(
+              user=os.environ['SNOWFLAKE_USER'],
+              password=os.environ['SNOWFLAKE_PASSWORD'],
+              account=os.environ['SNOWFLAKE_ACCOUNT'],
+              warehouse=os.environ['SNOWFLAKE_WAREHOUSE'],
+              database=os.environ['SNOWFLAKE_DATABASE'],
+              schema=os.environ['SNOWFLAKE_SCHEMA'],
+              role=os.environ.get('SNOWFLAKE_ROLE')
+          )
+          cur = conn.cursor()
+          sql_dir = os.environ['SQL_DIR']
+          ordered_files = ["01_create_tables.sql", "02_seed_data.sql", "03_transform.sql", "04_data_quality_checks.sql"]
+
+          for file in ordered_files:
+              path = f"{sql_dir}/{file}"
+              if os.path.isfile(path):
+                  print(f"🚀 Running {file}")
+                  with open(path, 'r') as f:
+                      sql = f.read()
+                      for stmt in sql.split(';'):
+                          if stmt.strip():
+                              cur.execute(stmt)
+              else:
+                  print(f"⚠️ Skipping {file} (not found)")
+
+          cur.close(); conn.close()
+          PY
 
       - name: Post-deploy row count check
         env:
@@ -124,17 +134,27 @@ jobs:
           SNOWFLAKE_SCHEMA: ${{ secrets.SNOWFLAKE_SCHEMA }}
           SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
         run: |
-          docker run --rm \
-            -e SNOWFLAKE_ACCOUNT="$SNOWFLAKE_ACCOUNT" \
-            -e SNOWFLAKE_USER="$SNOWFLAKE_USER" \
-            -e SNOWFLAKE_PASSWORD="$SNOWFLAKE_PASSWORD" \
-            -e SNOWFLAKE_WAREHOUSE="$SNOWFLAKE_WAREHOUSE" \
-            -e SNOWFLAKE_DATABASE="$SNOWFLAKE_DATABASE" \
-            -e SNOWFLAKE_SCHEMA="$SNOWFLAKE_SCHEMA" \
-            -e SNOWFLAKE_ROLE="$SNOWFLAKE_ROLE" \
-            ghcr.io/snowflakedb/snowsql:latest \
-            snowsql -q "SELECT 'patients' AS table_name, COUNT(*) AS rows FROM Research_Landing.PATIENTS
-                        UNION ALL
-                        SELECT 'trials', COUNT(*) FROM Research_Landing.TRIALS
-                        UNION ALL
-                        SELECT 'participation', COUNT(*) FROM Research_Landing.PARTICIPATION;"
+          python - <<'PY'
+          import os, snowflake.connector
+
+          conn = snowflake.connector.connect(
+              user=os.environ['SNOWFLAKE_USER'],
+              password=os.environ['SNOWFLAKE_PASSWORD'],
+              account=os.environ['SNOWFLAKE_ACCOUNT'],
+              warehouse=os.environ['SNOWFLAKE_WAREHOUSE'],
+              database=os.environ['SNOWFLAKE_DATABASE'],
+              schema=os.environ['SNOWFLAKE_SCHEMA'],
+              role=os.environ.get('SNOWFLAKE_ROLE')
+          )
+          cur = conn.cursor()
+          cur.execute("""
+              SELECT 'patients' AS table_name, COUNT(*) AS rows FROM Research_Landing.PATIENTS
+              UNION ALL
+              SELECT 'trials', COUNT(*) FROM Research_Landing.TRIALS
+              UNION ALL
+              SELECT 'participation', COUNT(*) FROM Research_Landing.PARTICIPATION;
+          """)
+          for row in cur.fetchall():
+              print(row)
+          cur.close(); conn.close()
+          PY

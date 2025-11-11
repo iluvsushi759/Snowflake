@@ -8,7 +8,7 @@ SnowflakeToSnowflake/SQL/04_data_quality_checks.sql
 
 **Activation**  
 YML script is placed in the .github/workflow directory.  This is where we will control our workflow
-.sql  In process of doing something else.
+.sql.  This will also create your staging and production schema and tables in Snowflake.
 
 
 **Linting Option**  
@@ -25,9 +25,9 @@ I'm using SQLFluff and unfortunately, it's VERY strict, so I created this config
 **4️⃣	04_data_quality_checks.sql** -- Runs basic data validation checks (such as row counts, null checks, and data type verification) to confirm that the data was successfully loaded and transformed.
 
 **Process and Execution**  
-Once an object or code is updated or deleted, the continuous integration will perform it's checks and linting then your deployment will begin.  If all passes, go through your PULL request to merge with your master/prod branch.  And schedule your change control.
+Once an object or code is updated or deleted, the continuous integration will perform it's checks and linting then your deployment will begin.  If all passes, schedule your change control, go through your PULL request to merge with your master/prod branch. 
 
-I chose to rather not have my CI as part of the test and CD as the prod but seperate it as CI/CD for dev branch and then another CI/CD for prod/main branch.
+
 
 **Why This Approach**
 

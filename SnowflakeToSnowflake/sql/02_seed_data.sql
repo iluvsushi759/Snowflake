@@ -1,6 +1,3 @@
--- 02_seed_data.sql
--- Seed data into target schema tables from shared S3 stage
-
 COPY INTO ${TARGET_SCHEMA}.PATIENTS
 FROM @RESEARCH_LANDING/patients.csv
 FILE_FORMAT = (TYPE = CSV FIELD_OPTIONALLY_ENCLOSED_BY = '"' SKIP_HEADER = 1);

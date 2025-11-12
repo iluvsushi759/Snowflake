@@ -28,7 +28,6 @@ I'm using SQLFluff and unfortunately, it's VERY strict, so I created this config
 Once an object or code is updated or deleted, the continuous integration will perform it's checks and linting then your deployment will begin.  If all passes, schedule your change control, go through your PULL request to merge with your master/prod branch. 
 
 
-
 **Why This Approach**
 
 This modular, step-by-step pipeline offers several benefits:  
@@ -48,4 +47,8 @@ This modular, step-by-step pipeline offers several benefits:
 This demo can be also used in other applications such as:  
 * inserting or changing code in your terminal and pushing this to have immediate testing  
 * ROLLBACK option - if we make a change we can easily re-apply our former state.  As long as the older commit that is pointing to still has it's files within S3 and hasn't changed, we can perform this.  This is a code change tracker where we can revert structure and possibly data.
+* Pull Request to main:  
 
+    - Team reviews the change (code review, lint checks, CI results).
+
+    - Ensures the change is intentional, correct, and compliant.
